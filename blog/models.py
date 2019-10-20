@@ -1,7 +1,27 @@
 from django.db import models
 from django.urls import reverse
 from django.contrib.auth.models import User
+from django.db.models import Count
 
+class PostQuerySet(models.QuerySet):
+
+    def year(self, year):
+        posts_at_year = self.filter(published_at__year=year).order_by('published_at')
+        return posts_at_year
+
+    def popular(self):
+        return self.annotate(Count('likes')).order_by('-likes__count')
+
+    def fetch_with_comments_count(self):
+        posts = self
+        posts_ids = [post.id for post in posts]
+        posts_with_comments = Post.objects.filter(id__in=posts_ids).annotate(Count('comments'))
+        ids_and_comments = posts_with_comments.values_list('id', 'comments__count')
+        count_for_id = dict(ids_and_comments)
+        for post in posts:
+            post.comments__count = count_for_id[post.id]
+        return posts
+        
 
 class Post(models.Model):
     title = models.CharField("Заголовок", max_length=200)
@@ -25,6 +45,13 @@ class Post(models.Model):
         verbose_name = 'пост'
         verbose_name_plural = 'посты'
 
+    objects = PostQuerySet.as_manager()
+
+class TagQuerySet(models.QuerySet):
+
+    def popular(self):
+        return self.annotate(Count('posts')).order_by('-posts__count')
+
 
 class Tag(models.Model):
     title = models.CharField("Тег", max_length=20, unique=True)
@@ -42,6 +69,8 @@ class Tag(models.Model):
         ordering = ["title"]
         verbose_name = 'тег'
         verbose_name_plural = 'теги'
+    
+    objects = TagQuerySet.as_manager()
 
 
 class Comment(models.Model):
